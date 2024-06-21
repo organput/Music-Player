@@ -1,5 +1,5 @@
 # Music-Player
-A Music player based on React-Native and NetEase Cloud API
+A Music player based on React-Native and Neteasecloudmusic API
 
 # UI方面：
 支持明暗模式切换，自定义的轮播banner组件（可首尾循环，可自动轮播）
