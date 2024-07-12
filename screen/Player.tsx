@@ -1,6 +1,6 @@
 import axios from "axios";
 import React, { useEffect, useRef, useState } from "react";
-import  { Alert, SafeAreaView, TouchableOpacity, View, Text, StyleSheet, Pressable, Image, FlatList} from "react-native";
+import  { Alert, SafeAreaView, TouchableOpacity, View, Text, StyleSheet, Pressable, Image, FlatList, TouchableWithoutFeedback} from "react-native";
 import Video, { VideoRef } from 'react-native-video';
 import { addTracks, setupPlayer } from "../src/Tracker/trackPlayerServices";
 import TrackPlayer, { useTrackPlayerEvents,Event, useProgress } from "react-native-track-player";
@@ -15,9 +15,17 @@ import Poup from "../src/PoUp/Poup";
 import { Musiclist } from "../src/PoUp/Musiclist";
 
 export function Player({route,navigation}){
-
+    const createTrackIdHashTable = (queue) => {
+        const hashTable: { [id: string]: boolean } = {};
+        queue.forEach((track) => {
+          hashTable[track.id] = true;
+        });
+        return hashTable;
+      };
     const { playlist,isChange,changeUrl } = route.params;
     const [songUrl,setSongurl] = useState('');
+    const [hashTable,setHash] = useState<{ [id: string]: boolean }>({});
+    const [showCi,setShow] = useState(false);
     const [songID,setID] = useState<any>(0);
     const [songCi,setCi] = useState();
     const [visible, setVisible] = useState(false)
@@ -33,6 +41,7 @@ export function Player({route,navigation}){
     useEffect(() => {
         const fetchData = async () => {
           try {
+                
                 const songs = await api.get(`/song/url?id=${playlist.id}`);
                 const songci = await api.get(`/lyric/new?id=${playlist.id}`);
                 const trackId = await TrackPlayer.getCurrentTrack();
@@ -40,10 +49,27 @@ export function Player({route,navigation}){
                     const track = await TrackPlayer.getTrack(trackId);
                     setID(track);
                 }
-                const tracks = await TrackPlayer.getQueue();
-                setQueue(tracks);
+                const queue = await TrackPlayer.getQueue();
+                const newHashTable = createTrackIdHashTable(queue);
+                setHash(newHashTable);
                 setSongurl(songs.data.data[0].url);
-                setCi(songci.data.lrc);
+                setCi(songci.data.lrc.lyric);
+                if(isChange){
+
+                }
+                else{
+                    if(playlist.id !== songID.id){
+                        if(isTrackInQueue(playlist.id,hashTable)){
+                            moveTrackToFrontAndPlay(playlist.id);
+                        }
+                        playMusic(songUrl,playlist,songCi);
+                        addHashTable(playlist.id);
+                        //Alert.alert('Hash Table', JSON.stringify(hashTable));
+                    }
+                    else{
+                        TrackPlayer.play();
+                    }
+                }
             } catch (e) {
                 Alert.alert('Warning', 'Failed to fetch data');
             }
@@ -53,32 +79,39 @@ export function Player({route,navigation}){
         setupPlayer();
         const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
 
-    }, []);
+    }, [songUrl,playlist.id]);
 
-    useEffect(()=>{
-        if(isChange){
-
-        }
-        else{
-            if(playlist.id !== songID.id){
-                playMusic(songUrl,playlist);
-            }
-            else{
-                TrackPlayer.play();
-            }
-        }
-    },[songUrl])
 
     const goBack = () => {
         navigation.goBack();
     };
 
+
+    const addHashTable = (id) => {
+        setHash((prevHashTable) => ({
+          ...prevHashTable,
+          [id]: true,
+        }));
+      };
+
     const handleBackPress = () => {
         goBack();
         return true; // 返回 true 表示我们已经处理了这个事件，不需要再交给系统处理
     };
+
+    const moveTrackToFrontAndPlay = async (id) => {
+        const queue = await TrackPlayer.getQueue();
+        // 移除轨道
+        //Alert.alert('1')
+        const index = queue.findIndex(track => track.id === id)
+        await TrackPlayer.remove(index);
+    };
+
+    const isTrackInQueue = (id: string): boolean => {
+        return !!hashTable[id];
+    };
     
-    const playMusic = async (url,pl) => {
+    const playMusic = async (url: string,pl: { id: number; name: any; ar: { name: any; }[]; al: { picUrl: any; }; },songCi: undefined) => {
         // 停止当前播放的音乐
         await TrackPlayer.stop();
 
@@ -88,7 +121,8 @@ export function Player({route,navigation}){
           url: url, // 动态传入的音乐 URL
           title: pl.name,
           artist: pl.ar[0].name,
-          artwork:pl.al.picUrl
+          artwork:pl.al.picUrl,
+          description:songCi
         },0);
     
         // 播放音乐
@@ -112,7 +146,12 @@ export function Player({route,navigation}){
         <ImageBackground source={{ uri: !isChange ? playlist.al.picUrl : changeUrl}} style={{
             flex: 1
         }}>
+        <TouchableWithoutFeedback onPress={()=>{
+            // Alert.alert('hello');
+            setShow(!showCi);
+        }}>
         <BlurView style={{position: 'absolute',top: 0,left: 0,bottom: 0,right: 0,}} blurType={isDark?"light":"dark"} blurAmount={10} />
+        </TouchableWithoutFeedback>
         <SafeAreaView style={{
             flex: 1,
             flexDirection:'column'
@@ -127,7 +166,8 @@ export function Player({route,navigation}){
             <View style={{alignItems:'center'}}>
                 <Text style={[{fontSize:32,color:Colors.sub,fontWeight:'bold',textAlign:'center',marginTop:10}]}>{!isChange ? playlist.name : playlist.title}</Text>
                 <Text style={[s.smallText,{textAlign: 'center',marginTop:10}]}>{!isChange ? playlist.ar[0].name : playlist.artist}</Text>
-                <Image source={{uri: !isChange ? playlist.al.picUrl : changeUrl}} style={{width:300,height:300,marginTop:60}}/>
+                {!showCi ? <Image source={{uri: !isChange ? playlist.al.picUrl : changeUrl}} style={{width:300,height:300,marginTop:60}}/> : 
+                <Text>{songCi}</Text>}
                 <View style={{width:'80%',backgroundColor:Colors.trans,borderRadius:10,alignItems: 'center',height:100,marginTop:60}}>
                     <Slider 
                         style={{width:'80%',height:40,marginTop:20}}
